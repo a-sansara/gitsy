@@ -1,5 +1,5 @@
 #!/bin/bash
-
+   GITSY_VERSION=0.4
   GITSY_HOOKNAME=${1:-''}; shift
     GITSY_PARAMS="$@"
         GITSY_WK="$(pwd)"
@@ -8,18 +8,7 @@
    GITSY_NOCOLOR=0
  GITSY_PULLFIRST=0
     GITSY_SCRIPT=$0
-   GITSY_VERSION=0.2
 GITSY_TERM_WIDTH=105
-
-if [ "$GITSY_HOOKNAME" = "-h" ]; then
-    GITSY_HOOKNAME="help"
-fi
-if [ "$GITSY_HOOKNAME" = "-v" ]; then
-    echo $GITSY_VERSION
-    exit
-fi
-
-      GITSY_HOOK="gitsy.${GITSY_HOOKNAME//-/.}"
 
 if [ "$GITSY_NOCOLOR" -eq 0 ]; then
              Cok="\033[0;38;5;36m"
@@ -89,15 +78,19 @@ function gitsy.sepline(){
     local width=${2:-$GITSY_TERM_WIDTH}
     echo -ne "${Csep} "
     printf "%0.s$char" $(seq 1 $width)
-    echo -e "\n"
+    echo -e "${Coff}\n"
 }
 # -------------------------------------------------------
 function gitsy.title(){
-    local msg=${1:-''}
-    local len="  :: $msg :: author : a-Sansara"
+    local     msg=${1:-''}
+    local version=${2:-''}
+    if [ ! -z "$2" ]; then
+        msg="$msg ${Cval}v$version"
+    fi
+    local     len="$1${version}author:a-Sansara"
     gitsy.sepline
     echo -ne " $Ctsep :: $Ctitle$msg $Ctsep:: $Coff"
-    printf "%0.s " $(seq 1 $(($GITSY_TERM_WIDTH-${#len}-2)))
+    printf "%0.s " $(seq 1 $(($GITSY_TERM_WIDTH-${#len}-15)))
     echo -e " ${Cok}author : ${Cval}a-Sansara"
     gitsy.sepline
 }
@@ -132,7 +125,8 @@ function gitsy.upstream.track(){
 function gitsy.mktemp(){
     tfile="$(mktemp)"
     if [ ! -f "$tfile" ]; then
-        gitsy.echo.error "can't make temp file"
+        gitsy.echo.error "\n
+        can't make temp file"
         exit 1
     fi
 }
@@ -179,7 +173,7 @@ function gisty.sync.list(){
     fi
 }
 # -------------------------------------------------------
-function gitsy.parse.push.args(){
+function gitsy.parse.spush.args(){
     for ((i=1;i<=${#};i++)); do
         if [ ! "${!i:0:1}" = "-" ]; then
             if [ -z "$repo" ]; then
@@ -195,7 +189,7 @@ function gitsy.parse.push.args(){
 # -------------------------------------------------------
 function gitsy.spush(){
     local opt repo branch i rs
-    gitsy.parse.push.args $@
+    gitsy.parse.spush.args $@
     gitsy.echo.action "pushing on ${Copt}$opt ${Cspe}$repo ${Cbra}$branch\n"
     result=$(git push $opt $repo $branch 2>&1)
     rs=$?
@@ -238,7 +232,8 @@ function gitsy.disync(){
         gitsy.echo.action "synchro list : "
         gisty.sync.list
     else
-        gitsy.error "you must specified a repository !"
+        gitsy.error "\n
+        you must specified a repository !"
     fi
 }
 
@@ -263,7 +258,8 @@ function gitsy.upsync(){
                 gitsy.echo "     git remote already exists"
             else
                 if [ -z "$url" ]; then
-                    gitsy.error "you must specified a remote url !"
+                    gitsy.error "\n
+        you must specified a remote url !"
                 else
                     gitsy.echo.action "git adding remote ${Cspe}$repo ${Cbra}$url"
                     git remote add "$repo" "$url"
@@ -275,9 +271,12 @@ function gitsy.upsync(){
             echo -e "
       You can now use :
       ${Cspe}git spush ${Copt}repository ${Cbra}branch${Coff}
+      Or :
+      ${Cspe}gitsy spush ${Copt}repository ${Cbra}branch${Coff}
 "
         else
-            gitsy.error "you must specified a REPOSITORY !"
+            gitsy.error "\n
+        you must specified a REPOSITORY !"
         fi
     fi
 }
@@ -296,69 +295,152 @@ function gitsy.version(){
     exit
 }
 # -------------------------------------------------------
+function gitsy.install.version(){
+    GITSY_INSTALL_VERSION=0
+    local exists=$(type ${GITSY_SCRIPT##*/} 2>/dev/null)
+    if [ ! -z "$exists" ]; then
+        GITSY_INSTALL_VERSION=$(${GITSY_SCRIPT##*/} -v)
+    fi
+}
+# -------------------------------------------------------
 function gitsy.help(){
     gitsy.usage
 }
 # -------------------------------------------------------
-function gitsy.install(){
-    local dir=${1:-'/usr/bin'}
-    local spush=''
-    local uid
-    local usr
-    if [ -d "$dir" ]; then
-        gitsy.echo.action "installing in ${Cspe}$dir ${Cok}directory"
-        cp $GITSY_SCRIPT "$dir/gitsy" > /dev/null 2>&1
-        if [ "$?" -eq 0 ]; then
-            spush="$(git config --list | grep alias.spush)"
-            if [ ! -z "$spush" ]; then
-                if [ "$spush" = "alias.spush=!bash gitsy spush" ]; then
-                    gitsy.echo "     git alias spush already exists. skip"
-                else
-                    gitsy.error "git alias.spush exists in ~/.gitconfig but has a wrong definition. remove it or rename it" 0
-                fi
-            else
-                usr=$(logname)
-                gitsy.echo.action "enabling git alias ${Cspe}spush ${Cok}for user ${Cbra}$usr"
-                su -c "git config --global alias.spush '!bash gitsy spush'" $usr
+function gitsy.check.command(){
+    case "$GITSY_HOOKNAME" in
+        'spush'|'upsync'|'disync')
+            if [ -z "$(git branch --no-color 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/(\1)/')" ]; then
+                gitsy.error "\n
+            ${Cval}$(pwd)${Coff} is not a git repository. 
+            you must chdir to a repository before using ${Cval}$GITSY_HOOKNAME" 1
             fi
-            gitsy.echo.state 0
+    esac
+}
+# -------------------------------------------------------
+function gitsy.parse.install.args(){
+    for ((i=1;i<=${#};i++)); do
+        if [ ! "${!i:0:1}" = "-" ]; then
+            if [ -z "$dir" ]; then
+                dir=${!i}
+            fi
         else
-            gitsy.echo.error "permission denied"
-            gitsy.echo.state 1
+            opt=${!i}
+        fi
+    done
+    force="false"
+    if [ "$opt" = "-f" ] || [ "$opt" = "--force" ]; then
+        force="true"
+    fi
+}
+# -------------------------------------------------------
+function gitsy.install(){
+    if [ ! "$GITSY_INSTALLED" = "true" ]; then
+        local dir spush uid opt force curvers usr=$(logname)
+        gitsy.install.version
+        gitsy.parse.install.args $@
+            dir=${dir:-'/usr/bin'}
+        curvers=${GITSY_INSTALL_VERSION//./}
+        if [ -d "$dir" ]; then
+            gitsy.echo.action "installing in ${Cspe}$dir ${Cok}directory"
+            if [ ${GITSY_INSTALL_VERSION//./} -ge ${GITSY_VERSION//./} ] && [ "$force" = "false" ]; then
+                gitsy.echo "
+     aborting installation
+     ${Cspe}gitsy${Cko} already installed with most recent version ${Cval}$GITSY_INSTALL_VERSION${Cko}
+     run ${Cspe}gitsy ${Copt}install -f ${Cko}to force reinstall
+"
+                exit
+            else
+                cp $GITSY_SCRIPT "$dir/gitsy" > /dev/null 2>&1
+                if [ "$?" -eq 0 ]; then
+                    local data=$(head -n -1 "$dir/gitsy")
+                    echo "$data
+GITSY_INSTALLED=true
+gitsy.main
+" > "$dir/gitsy"
+                    gitsy.on.install "$force" "$(logname)"
+                else
+                    gitsy.echo.error "\n
+        permission denied"
+                    gitsy.echo.state 1
+                    exit 1
+                fi
+            fi
+        else
+            gitsy.echo.error "\n
+        directory ${Cspe}'$dir'${Coff} does not exists"
             exit 1
         fi
-    else
-        gitsy.echo.error "directory ${Cspe}'$dir'${Coff} does not exists"
-        exit 1
     fi
+}
+# -------------------------------------------------------
+function gitsy.on.install(){
+    local spush="$(git config --list | grep alias.spush)"
+    if [ ! -z "$spush" ]; then
+        if [ "$spush" = "alias.spush=!bash gitsy spush" ]; then
+            gitsy.echo "     git alias spush already exists. skip"
+        elif [ "$1" = "true" ]; then
+            gitsy.echo.action "rewriting git alias ${Cspe}spush"
+            su -c "git config --global --unset alias.spush" $2
+            su -c "git config --global alias.spush '!bash gitsy spush'" $2
+            
+        else
+            gitsy.error "\n
+        git alias.spush exists in ~/.gitconfig but has a wrong definition. remove it or rename it" 0
+        fi
+    else
+        gitsy.echo.action "enabling git alias ${Cspe}spush ${Cok}for user ${Cbra}$2"
+        su -c "git config --global alias.spush '!bash gitsy spush'" $2
+    fi
+    gitsy.echo.state 0
 }
 # -------------------------------------------------------
 function gitsy.usage(){
     echo -e "    ${Cusa}usage :${Coff}
 
-    ${Cspe}\tgitsy  ${Copt}post-push  ${Ctext}REPOSITORY BRANCH
+    ${Cspe}\tgitsy  ${Copt}spush      ${Ctext}REPOSITORY BRANCH
     ${Cspe}\tgitsy  ${Copt}upsync     ${Ctext}REPOSITORY ${Copt}[ ${Ctext}URL${Copt} ]
-    ${Cspe}\tgitsy  ${Copt}disync     ${Ctext}REPOSITORY
-    ${Cspe}\tgitsy  ${Copt}install    ${Copt}[ ${Ctext}BINDIR${Copt} ]
-    ${Cspe}\tgitsy  ${Copt}help
+    ${Cspe}\tgitsy  ${Copt}disync     ${Ctext}REPOSITORY"
+    if [ ! "$GITSY_INSTALLED" = "true" ]; then
+        echo -e "    ${Cspe}\tgitsy  ${Copt}install    ${Copt}[ ${Ctext}BINDIR${Copt} ]"
+    else
+        echo -e "    ${Cspe}\tgitsy  ${Copt}uninstall"
+    fi
+        echo -e "    ${Cspe}\tgitsy  ${Copt}help
     ${Cspe}\tgitsy  ${Copt}version
 ${Coff}
 "
 }
-
 # -------------------------------------------------------
-
-gitsy.title "GITSY"
-
-if [ ! -z "$GITSY_HOOKNAME" ]; then
-    type $GITSY_HOOK > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        #~ echo -e " ${Cspe}command ${Copt}$GITSY_HOOKNAME ${Ctext}$GITSY_PARAMS${Coff}\n"
-        $GITSY_HOOK $GITSY_PARAMS
-        echo
-    else
-        gitsy.error "invalid command ${Cspe}$GITSY_HOOKNAME${Coff}"
+function gitsy.main(){
+    if [ "$GITSY_HOOKNAME" = "-v" ]; then
+        echo $GITSY_VERSION
+        exit
     fi
-else
-    gitsy.error "you must specified a command !"
-fi
+    if [ "$GITSY_HOOKNAME" = "-h" ]; then
+        GITSY_HOOKNAME="help"
+    fi
+    GITSY_HOOK="gitsy.${GITSY_HOOKNAME//-/.}"
+    gitsy.title "${GITSY_SCRIPT##*/}" "$GITSY_VERSION"
+    gitsy.check.command
+    if [ ! -z "$GITSY_HOOKNAME" ]; then
+        type $GITSY_HOOK > /dev/null 2>&1
+        discmd="false"
+        if [ "$GITSY_HOOKNAME" = "install" ] && [ "$GITSY_INSTALLED" = "true" ]; then
+            discmd="true"
+        fi
+        if [ $? -eq 0 ] && [ "$discmd" = "false" ]; then
+            #~ echo -e " ${Cspe}command ${Copt}$GITSY_HOOKNAME ${Ctext}$GITSY_PARAMS${Coff}\n"
+            $GITSY_HOOK $GITSY_PARAMS
+            echo
+        else
+            gitsy.error "\n
+            invalid command ${Cspe}$GITSY_HOOKNAME${Coff}"
+        fi
+    else
+        gitsy.error "\n
+            you must specified a command !"
+    fi
+}
+# -------------------------------------------------------
+gitsy.main
