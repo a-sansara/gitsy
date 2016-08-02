@@ -2,20 +2,31 @@
 
   GITSY_HOOKNAME=${1:-''}; shift
     GITSY_PARAMS="$@"
-      GITSY_HOOK="gitsy.${GITSY_HOOKNAME//-/.}"
         GITSY_WK="$(pwd)"
     GITSY_ORIGIN="origin"
     GITSY_UPSYNC="upsync"
    GITSY_NOCOLOR=0
  GITSY_PULLFIRST=0
     GITSY_SCRIPT=$0
+   GITSY_VERSION=0.2
+GITSY_TERM_WIDTH=105
+
+if [ "$GITSY_HOOKNAME" = "-h" ]; then
+    GITSY_HOOKNAME="help"
+fi
+if [ "$GITSY_HOOKNAME" = "-v" ]; then
+    echo $GITSY_VERSION
+    exit
+fi
+
+      GITSY_HOOK="gitsy.${GITSY_HOOKNAME//-/.}"
 
 if [ "$GITSY_NOCOLOR" -eq 0 ]; then
              Cok="\033[0;38;5;36m"
              Cko="\033[0;38;5;176m"
             Coff="\033[m"
-          Ctitle="\033[1;48;5;30;1;38;5;15m"
-           Ctsep="\033[1;48;5;30;1;38;5;227m"
+          Ctitle="\033[1;48;5;23;1;38;5;15m"
+           Ctsep="\033[1;48;5;23;1;38;5;227m"
             Cspe="\033[1;38;5;223m"
            Citem="\033[1;38;5;209m"
             Cval="\033[1;38;5;215m"
@@ -23,9 +34,11 @@ if [ "$GITSY_NOCOLOR" -eq 0 ]; then
             Cbra="\033[1;38;5;203m"
            Ctext="\033[1;38;5;30m"
             Copt="\033[1;38;5;84m"
+            Csep="\033[1;38;5;241m"
             Cerr="\033[1;38;5;196m"
 fi
 
+# -------------------------------------------------------
 function gitsy.echo(){
     local      msg=${1:-''}
     local isAction=${2:-'0'}
@@ -46,11 +59,11 @@ function gitsy.echo(){
         echo -e "$msg"
     fi
 }
-
+# -------------------------------------------------------
 function gitsy.echo.action(){
     gitsy.echo "$1" 1
 }
-
+# -------------------------------------------------------
 function gitsy.echo.keyval(){
     local c=': '
     if [ ! "$GITSY_NOCOLOR" = 1 ]; then
@@ -58,20 +71,37 @@ function gitsy.echo.keyval(){
     fi
     gitsy.echo "  $1 $c$2" 1 " "
 }
-
+# -------------------------------------------------------
+function gitsy.echo.state(){
+    if [ "$1" = 0 ]; then
+        echo "      done !"
+    else 
+        echo "      fail !"
+    fi
+}
+# -------------------------------------------------------
 function gitsy.echo.error(){
     echo -e "${Cerr}    error : ${Coff} $1 ${Coff}\n"
 }
-
+# -------------------------------------------------------
+function gitsy.sepline(){
+    local  char=${1:-'_'}
+    local width=${2:-$GITSY_TERM_WIDTH}
+    echo -ne "${Csep} "
+    printf "%0.s$char" $(seq 1 $width)
+    echo -e "\n"
+}
+# -------------------------------------------------------
 function gitsy.title(){
     local msg=${1:-''}
-    if [ ! "$GITSY_NOCOLOR" = 1 ]; then
-        echo -e "\n $Ctsep :: $Ctitle$msg $Ctsep:: $Coff\n"
-    else
-        echo -e "\n :: $msg ::\n"
-    fi
+    local len="  :: $msg :: author : a-Sansara"
+    gitsy.sepline
+    echo -ne " $Ctsep :: $Ctitle$msg $Ctsep:: $Coff"
+    printf "%0.s " $(seq 1 $(($GITSY_TERM_WIDTH-${#len}-2)))
+    echo -e " ${Cok}author : ${Cval}a-Sansara"
+    gitsy.sepline
 }
-
+# -------------------------------------------------------
 function gitsy.branch.trackAll(){
     local origin=${1:-$GITSY_ORIGIN}
     gitsy.title "Tracking $Cspe$origin"
@@ -85,12 +115,12 @@ function gitsy.branch.trackAll(){
         fi
     done
 }
-
+# -------------------------------------------------------
 function gitsy.remote.branch(){
     local origin=${1:-$GITSY_ORIGIN}
     git branch -r --color=never | grep "$origin/" | grep -v HEAD | sed -e 's/.*\///g'
 }
-
+# -------------------------------------------------------
 function gitsy.upstream.track(){
       local origin=${1:-$GITSY_ORIGIN}
     local upstream=${2:-$GITSY_UPSTREAM}
@@ -98,7 +128,7 @@ function gitsy.upstream.track(){
         git branch -t $name  $upstream/$name ;
     done
 }
-
+# -------------------------------------------------------
 function gitsy.mktemp(){
     tfile="$(mktemp)"
     if [ ! -f "$tfile" ]; then
@@ -106,7 +136,7 @@ function gitsy.mktemp(){
         exit 1
     fi
 }
-
+# -------------------------------------------------------
 function gitsy.match.infile(){
     local match=1
     local repo=''
@@ -120,7 +150,7 @@ function gitsy.match.infile(){
     fi
     return $match
 }
-
+# -------------------------------------------------------
 function gitsy.match.remote(){
     local match=1
     local repo=''
@@ -132,12 +162,12 @@ function gitsy.match.remote(){
     done
     return $match
 }
-
+# -------------------------------------------------------
 function gitsy.remove.infile(){
     gitsy.mktemp
     grep -v "$1" "$2" > "$tfile" && mv "$tfile" "$2"
 }
-
+# -------------------------------------------------------
 function gisty.sync.list(){
     local repo=''
     if [ -f ".gitsy" ]; then
@@ -148,21 +178,55 @@ function gisty.sync.list(){
         done < .gitsy
     fi
 }
-
-function gitsy.post.push(){
-    gitsy.echo.action "looking repositories"
-    for name in $(git remote -v | grep ^${GITSY_UPSYNC}[^\(]*\(push\)$ | cut -f 1); do
-        gitsy.echo.action "pushing on ${Cspe}$name ${Cbra}$2"
-        if [ "$GITSY_PULLFIRST" = 1 ]; then
-            echo
-            git pull $name $2 2>&1 | sed "s/^/ /"
+# -------------------------------------------------------
+function gitsy.parse.push.args(){
+    for ((i=1;i<=${#};i++)); do
+        if [ ! "${!i:0:1}" = "-" ]; then
+            if [ -z "$repo" ]; then
+                repo=${!i}
+            else
+                branch=${!i}
+            fi
+        else
+            opt=${!i}
         fi
-        echo
-        git push $name $2 2>&1 | sed "s/^/ /"
-        echo 
     done
 }
-
+# -------------------------------------------------------
+function gitsy.spush(){
+    local opt repo branch i rs
+    gitsy.parse.push.args $@
+    gitsy.echo.action "pushing on ${Copt}$opt ${Cspe}$repo ${Cbra}$branch\n"
+    result=$(git push $opt $repo $branch 2>&1)
+    rs=$?
+    echo -e "$result" | sed "s/^/      /"
+    if [ "$rs" = 0 ]; then
+        gitsy.echo.state 0
+        echo
+        gitsy.echo.action "looking for upsync repositories"
+        gisty.sync.list
+        echo
+        for name in $(git remote -v | grep ^${GITSY_UPSYNC}[^\(]*\(push\)$ | cut -f 1); do
+            gitsy.echo.action "pushing on ${Copt}$opt ${Cspe}$name ${Cbra}$branch"
+            if [ "$GITSY_PULLFIRST" = 1 ]; then
+                echo
+                result=$(git pull $name $branch 2>&1)
+                rs=$?
+                echo -e "$result" | sed "s/^/      /"
+                gitsy.echo.state "$rs"
+            fi
+            echo
+            result=$(git push $opt $name $branch 2>&1)
+            rs=$?
+            echo -e "$result" | sed "s/^/      /"
+            gitsy.echo.state "$rs"
+            echo 
+        done
+    else 
+        gitsy.echo.state 1
+    fi
+}
+# -------------------------------------------------------
 function gitsy.disync(){
     local repo=${1:-''}
     if [ ! -z "$repo" ]; then
@@ -178,6 +242,7 @@ function gitsy.disync(){
     fi
 }
 
+# -------------------------------------------------------
 function gitsy.upsync(){
     if [ -d ./.git ]; then
         local repo=${1:-''}
@@ -190,7 +255,7 @@ function gitsy.upsync(){
             if ! gitsy.match.infile "$repo" ".gitsy"; then
                 gitsy.echo.action "upsync new remote repository : ${Cspe}$repo"
                 echo -e "$repo" >> ".gitsy"
-            else 
+            else
                 gitsy.echo.action "enabling upsync remote repository : ${Cspe}$repo"
             fi
             #~ gitsy.remove.infile "$repo" ".gitsy"
@@ -204,17 +269,6 @@ function gitsy.upsync(){
                     git remote add "$repo" "$url"
                 fi
             fi
-
-            #~ if [ "$GITSY_MATCH" = "false" ]; then
-                #~ echo "$repo" >> ".gitsy" 
-            #~ fi
-
-            if [ ! -z "$(git config --list | grep alias.spush)" ]; then
-                gitsy.echo "     git alias spush already exists. skip"
-            else
-                gitsy.echo.action "enabling git alias ${Cspe}spush"
-                git config alias.spush '!git push $1 $2 && gitsy post-push'
-            fi
             echo
             gitsy.echo.action "synchro list : "
             gisty.sync.list
@@ -222,74 +276,89 @@ function gitsy.upsync(){
       You can now use :
       ${Cspe}git spush ${Copt}repository ${Cbra}branch${Coff}
 "
-
-        else 
+        else
             gitsy.error "you must specified a REPOSITORY !"
         fi
     fi
 }
-
+# -------------------------------------------------------
 function gitsy.error(){
     local withUsage=${2:-1}
     gitsy.echo.error "$1"
     if [ "$withUsage" = 1 ]; then
         gitsy.usage
-        exit 1
-    fi 
+    fi
+    exit 1
 }
-
+# -------------------------------------------------------
+function gitsy.version(){
+    echo " $GITSY_VERSION"
+    exit
+}
+# -------------------------------------------------------
+function gitsy.help(){
+    gitsy.usage
+}
+# -------------------------------------------------------
 function gitsy.install(){
     local dir=${1:-'/usr/bin'}
+    local spush=''
+    local uid
+    local usr
     if [ -d "$dir" ]; then
-        gitsy.echo.action "installing in ${Cspe}$dir directory"
+        gitsy.echo.action "installing in ${Cspe}$dir ${Cok}directory"
         cp $GITSY_SCRIPT "$dir/gitsy" > /dev/null 2>&1
         if [ "$?" -eq 0 ]; then
-            echo "    done !"
-        else 
+            spush="$(git config --list | grep alias.spush)"
+            if [ ! -z "$spush" ]; then
+                if [ "$spush" = "alias.spush=!bash gitsy spush" ]; then
+                    gitsy.echo "     git alias spush already exists. skip"
+                else
+                    gitsy.error "git alias.spush exists in ~/.gitconfig but has a wrong definition. remove it or rename it" 0
+                fi
+            else
+                usr=$(logname)
+                gitsy.echo.action "enabling git alias ${Cspe}spush ${Cok}for user ${Cbra}$usr"
+                su -c "git config --global alias.spush '!bash gitsy spush'" $usr
+            fi
+            gitsy.echo.state 0
+        else
             gitsy.echo.error "permission denied"
-            echo "    fail !"
+            gitsy.echo.state 1
             exit 1
         fi
-    else 
+    else
         gitsy.echo.error "directory ${Cspe}'$dir'${Coff} does not exists"
         exit 1
     fi
 }
-
+# -------------------------------------------------------
 function gitsy.usage(){
     echo -e "    ${Cusa}usage :${Coff}
 
-    ${Cspe}\tgitsy  ${Copt}post-push  ${Ctext}REPOSITORY BRANCH${Coff}
-    ${Cspe}\tgitsy  ${Copt}upsync     ${Ctext}REPOSITORY ${Copt}[ ${Ctext}URL${Copt} ]${Coff}
-    ${Cspe}\tgitsy  ${Copt}disync     ${Ctext}REPOSITORYCoff}
-    ${Cspe}\tgitsy  ${Copt}install    ${Copt}[ ${Ctext}BINDIR${Copt} ]${Coff}
+    ${Cspe}\tgitsy  ${Copt}post-push  ${Ctext}REPOSITORY BRANCH
+    ${Cspe}\tgitsy  ${Copt}upsync     ${Ctext}REPOSITORY ${Copt}[ ${Ctext}URL${Copt} ]
+    ${Cspe}\tgitsy  ${Copt}disync     ${Ctext}REPOSITORY
+    ${Cspe}\tgitsy  ${Copt}install    ${Copt}[ ${Ctext}BINDIR${Copt} ]
+    ${Cspe}\tgitsy  ${Copt}help
+    ${Cspe}\tgitsy  ${Copt}version
+${Coff}
 "
-test="upsync-toto"
-        gitsy.match.infile "$test" ".gitsy"
-        echo $GITSY_MATCH
-#~ if [ "${test:0:${#GITSY_UPSYNC}}" = "$GITSY_UPSYNC" ]; then
-
-#~ else
-    
-#~ fi
-#~ echo ${test:0:${#GITSY_UPSYNC}}
 }
 
-gitsy.title " GITSY "
+# -------------------------------------------------------
+
+gitsy.title "GITSY"
 
 if [ ! -z "$GITSY_HOOKNAME" ]; then
-    toto=$(type $GITSY_HOOK > /dev/null 2>&1)
+    type $GITSY_HOOK > /dev/null 2>&1
     if [ $? -eq 0 ]; then
-        echo -e " ${Cspe}gitsy ${Copt}$GITSY_HOOKNAME ${Ctext}$GITSY_PARAMS${Coff}"
-        echo
+        #~ echo -e " ${Cspe}command ${Copt}$GITSY_HOOKNAME ${Ctext}$GITSY_PARAMS${Coff}\n"
         $GITSY_HOOK $GITSY_PARAMS
         echo
-    else 
+    else
         gitsy.error "invalid command ${Cspe}$GITSY_HOOKNAME${Coff}"
     fi
-else 
+else
     gitsy.error "you must specified a command !"
 fi
-#~ echo [alias]
-        #~ xpush = !git push $1 $2 && bin/hook post-push
-
