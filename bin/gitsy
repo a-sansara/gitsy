@@ -261,7 +261,7 @@ gitsy.spush(){
     if [ "$rs" = 0 ]; then
         gitsy.echo.state 0
         echo
-        gisty.list
+        gitsy.list
         echo
         for name in $(git remote -v | grep ^${GITSY_UPSYNC}[^\(]*\(push\)$ | cut -f 1); do
             gitsy.echo.action "pushing on ${Copt}$opt ${Cspe}$name ${Cbra}$branch"
