@@ -69,7 +69,7 @@ gitsy.sepline(){
     local width=${2:-$GITSY_TERM_WIDTH}
     echo -ne "${Csep} "
     printf "%0.s$char" $(seq 1 $width)
-    echo -e "${Coff}\n"
+    echo -e "${Coff}"
 }
 gitsy.title(){
     local     msg=${1:-''}
@@ -79,7 +79,7 @@ gitsy.title(){
     fi
     local     len="$1${version}license : GNU GPL v3   author:a-Sansara"
     gitsy.sepline
-    echo -ne "  $Ctitle   $msg   $Coff"
+    echo -ne "\n  $Ctitle   $msg   $Coff"
     printf "%0.s " $(seq 1 $(($GITSY_TERM_WIDTH-${#len}-15)))
     echo -e " ${Cmeta}license : ${Coff}GNU GPL v3   ${Cmeta}author : ${Cval}a-Sansara"
     gitsy.sepline
@@ -188,6 +188,9 @@ gitsy.check.gitdir(){
     local dir=$(git rev-parse --show-toplevel 2> /dev/null)
     if [ ! -z "$dir" ]; then
         GITSY_FILE="$dir/.gitsy"
+        if [ ! -f "$GITSY_FILE" ]; then
+            touch "$GITSY_FILE"
+        fi
     fi
 }
 gitsy.mktemp(){
@@ -292,7 +295,6 @@ gitsy.spush(){
         gitsy.echo.state 0
         echo
         gitsy.list
-        echo
         for name in $(git remote -v | grep ^${GITSY_UPSYNC}[^\(]*\(push\)$ | cut -f 1); do
             gitsy.echo.action "pushing on ${Copt}$opt ${Cspe}$name ${Cbra}$branch"
             if [ "$GITSY_PULLFIRST" = 1 ]; then
@@ -355,6 +357,7 @@ gitsy.list(){
             echo $name
         fi
     done
+    echo
 }
 gitsy.add(){
     if [ -d ./.git ]; then
@@ -385,8 +388,7 @@ gitsy.add(){
             fi
             echo
             gitsy.list
-            echo -e "
-     You can now use :
+            echo -e "     You can now use :
      ${Cspe}git $GITSY_ALIAS ${Copt}repository ${Cbra}branch${Coff}
      Or :
      ${Cspe}gitsy $GITSY_ALIAS ${Copt}repository ${Cbra}branch${Coff}
@@ -400,12 +402,9 @@ gitsy.error(){
     local withUsage=${2:-1}
     gitsy.echo.error "$1"
     if [ "$withUsage" = 1 ]; then
-        gitsy.usage
+        gitsy.help
     fi
     exit 1
-}
-gitsy.help(){
-    gitsy.usage
 }
 gitsy.version(){
     echo " $GITSY_VERSION"
@@ -420,10 +419,14 @@ gitsy.install.version(){
 gitsy.check.command(){
     case "$GITSY_COMMAND" in
         '$GITSY_ALIAS'|'add'|'remove')
+            echo
             if [ -z "$GITSY_FILE" ]; then
                 gitsy.error "${Cval}$(pwd)${Coff} is not a git repository. 
         you must chdir to a repository before using ${Cval}$GITSY_COMMAND" 0
             fi
+            ;;
+        'help'|'install'|'uninstall'|'list')
+            echo
             ;;
     esac
 }
@@ -438,6 +441,7 @@ gitsy.uninstall(){
         rm -f /etc/bash_completion.d/gitsy 2> /dev/null
     fi
     gitsy.echo.state "$rs"
+    echo
 }
 gitsy.install(){
     if [ ! "$GITSY_INSTALLED" = "true" ]; then
@@ -463,6 +467,7 @@ gitsy.install(){
 GITSY_INSTALLED=true
 gitsy.main
 " > "$dir/gitsy"
+                    gitsy.echo.action "installing autocompletion"
                     gitsy.set.completion
                     gitsy.on.install "$force" "$(logname)"
                 else
@@ -495,8 +500,9 @@ gitsy.on.install(){
         su -c "git config --global alias.$GITSY_ALIAS '!bash gitsy $GITSY_ALIAS'" $2
     fi
     gitsy.echo.state 0
+    echo
 }
-gitsy.usage(){
+gitsy.help(){
     echo -e "    ${Cusa}Global Options :${Coff}\n
     \t${Copt}-${Ctext}h${Copt}, --${Ctext}help        ${Ccom}display help
     ${Copt}\t-${Ctext}v${Copt}, --${Ctext}version     ${Ccom}display program version
@@ -520,37 +526,31 @@ gitsy.usage(){
         echo -e "    ${Ccom}\tUninstall gitsy"
         echo -e "    ${Cspe}\tgitsy  ${Copt}uninstall"
     fi
-        echo -e "${Coff}
-"
+        echo -e "${Coff}"
 }
 gitsy.main(){
     gitsy.check.gitdir
-    #~ echo "GITSY_FILE : $GITSY_FILE"
     if [ "$GITSY_COMMAND" = "-v" ]; then
         echo $GITSY_VERSION
         exit
     fi
-    if [ "$GITSY_COMMAND" = "-h" ] || [ "$GITSY_COMMAND" = "--help" ]; then
+    if [ "$GITSY_COMMAND" = "-h" ] || [ "$GITSY_COMMAND" = "--help" ] || [ -z "$GITSY_COMMAND" ]; then
         GITSY_COMMAND="help"
     fi
     GITSY_CALL="gitsy.${GITSY_COMMAND//-/.}"
     gitsy.title "${GITSY_SCRIPT##*/}" "$GITSY_VERSION"
     gitsy.check.command
-    if [ ! -z "$GITSY_COMMAND" ]; then
-        discmd="false"
-        if [ "$GITSY_COMMAND" = "install" ] && [ "$GITSY_INSTALLED" = "true" ]; then
-            discmd="true"
-        fi
-        type $GITSY_CALL > /dev/null 2>&1
-        if [ $? -eq 0 ] && [ "$discmd" = "false" ]; then
-            #~ echo -e " ${Cspe}command ${Copt}$GITSY_COMMAND ${Ctext}$GITSY_PARAMS${Coff} $GITSY_CALL\n"
-            $GITSY_CALL $GITSY_PARAMS
-            echo
-        else
-            gitsy.error "invalid command ${Cspe}$GITSY_COMMAND${Coff}"
-        fi
+    discmd="false"
+    if [ "$GITSY_COMMAND" = "install" ] && [ "$GITSY_INSTALLED" = "true" ]; then
+        discmd="true"
+    fi
+    type $GITSY_CALL > /dev/null 2>&1
+    if [ $? -eq 0 ] && [ "$discmd" = "false" ]; then
+        #~ echo -e " ${Cspe}command ${Copt}$GITSY_COMMAND ${Ctext}$GITSY_PARAMS${Coff} $GITSY_CALL\n"
+        $GITSY_CALL $GITSY_PARAMS
+        #~ echo
     else
-        gitsy.error "you must specified a command !"
+        gitsy.error "invalid command ${Cspe}$GITSY_COMMAND${Coff}"
     fi
 }
 
