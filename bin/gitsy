@@ -4,7 +4,7 @@
 # @license  GNU GPL v3 
 # @date     2016-08-06 01:50:09 
 
-   GITSY_VERSION=0.5;                GITSY_COMMAND=${1:-''}; shift
+   GITSY_VERSION=0.6;                GITSY_COMMAND=${1:-''}; shift
     GITSY_PARAMS="$@";                    GITSY_WK="$(pwd)"
     GITSY_ORIGIN="origin";            GITSY_UPSYNC="upsync"
      GITSY_ALIAS="spush";            GITSY_NOCOLOR=0
@@ -89,6 +89,12 @@ gitsy.title(){
 
 gitsy.set.completion(){
     cat <<EOF > /etc/bash_completion.d/gitsy
+_gitsy.check.gitdir(){
+    local dir=\$(git rev-parse --show-toplevel 2> /dev/null)
+    if [ ! -z "\$dir" ]; then
+        _GITSY_FILE="\$dir/.gitsy"
+    fi
+}
 _gitsy.match.infile(){
     local match=1
     local repo=''
@@ -103,16 +109,20 @@ _gitsy.match.infile(){
     return \$match
 }
 _gitsy_list(){
-    for name in \$(git remote -v | grep ^${GITSY_UPSYNC}[^\(]*\(push\)$ | cut -f 1); do
-        _gitsy.match.infile "\$name" ".gitsy"
-        if [ "\$1" = "\$?"  ]; then
-            echo \$name
-        fi
-    done
+    if [ ! -z "\$_GITSY_FILE" ]; then
+        for name in \$(git remote -v | grep ^${GITSY_UPSYNC}[^\(]*\(push\)$ | cut -f 1); do
+            _gitsy.match.infile "\$name" "$GITSY_FILE"
+            if [ "\$1" = "\$?"  ]; then
+                echo \$name
+            fi
+        done
+    fi
 }
 _gitsy() 
 {
     local cur prev opts base
+    _GITSY_FILE=''
+    _gitsy.check.gitdir
     COMPREPLY=()
           cur="\${COMP_WORDS[COMP_CWORD]}"
          prev="\${COMP_WORDS[COMP_CWORD-1]}"
@@ -131,16 +141,27 @@ _gitsy()
             return 0
             ;;
         spush)
-            COMPREPLY=( \$(compgen -W "-f --force \$(git remote -v | grep -v ^upsync-[^\(]*\(push\)$ |  grep -v ^upsync-[^\(]*\(fetch\)\$ | cut -f 1)" -- \${cur}) )
+            local running=""
+            if [ ! -z "\$_GITSY_FILE" ]; then
+                running="\$(git remote -v | grep -v ^$GITSY_UPSYNC-[^\(]*\(push\)$ |  grep -v ^$GITSY_UPSYNC-[^\(]*\(fetch\)\$ | cut -f 1)"
+            fi
+            COMPREPLY=( \$(compgen -W "-f --force \${running}" -- \${cur}) )
             return 0
             ;;
         -f|--force)
-            COMPREPLY=( \$(compgen -W "\$(git remote -v | grep -v ^upsync-[^\(]*\(push\)$ |  grep -v ^upsync-[^\(]*\(fetch\)\$ | cut -f 1)" -- \${cur}) )
+            local running=""
+            if [ ! -z "\$_GITSY_FILE" ]; then
+                running="\$(git remote -v | grep -v ^$GITSY_UPSYNC-[^\(]*\(push\)$ |  grep -v ^$GITSY_UPSYNC-[^\(]*\(fetch\)\$ | cut -f 1)"
+            fi
+            COMPREPLY=( \$(compgen -W "\${running}" -- \${cur}) )
             return 0
             ;;
         origin)
-            local running="master"
-            COMPREPLY=( \$(compgen -W "\$(git branch -l | sed -e 's/*//g')" -- \${cur}) )
+            local running=""
+            if [ ! -z "\$_GITSY_FILE" ]; then
+                running="\$(git branch -l | sed -e 's/*//g')"
+            fi
+            COMPREPLY=( \$(compgen -W "\${running}" -- \${cur}) )
             return 0
             ;;
         upsync-*)
@@ -163,11 +184,16 @@ _gitsy()
 complete -F _gitsy gitsy
 EOF
 }
+gitsy.check.gitdir(){
+    local dir=$(git rev-parse --show-toplevel 2> /dev/null)
+    if [ ! -z "$dir" ]; then
+        GITSY_FILE="$dir/.gitsy"
+    fi
+}
 gitsy.mktemp(){
     tfile="$(mktemp)"
     if [ ! -f "$tfile" ]; then
-        gitsy.echo.error "can't make temp file"
-        exit 1
+        gitsy.error "can't make temp file" 0
     fi
 }
 gitsy.match.infile(){
@@ -180,6 +206,8 @@ gitsy.match.infile(){
                 break
             fi
         done < "$2"
+    else
+        gitsy.error "not in a git repository. abort" 0
     fi
     return $match
 }
@@ -197,14 +225,16 @@ gitsy.match.remote(){
 gitsy.remove.infile(){
     local repo=''
     local data=''
-    if [ -f ".gitsy" ]; then
+    if [ -f "$GITSY_FILE" ]; then
         while read repo; do
             if [ ! "$1" = "$repo" ]; then
                 data="$repo\n"
             fi
-        done < .gitsy
+        done < "$GITSY_FILE"
+        echo -e "$data" > "$2"
+    else
+        gitsy.error "not in a git repository. abort" 0
     fi
-    echo -e "$data" > "$2"
 }
 
 # -- PARAMS PARSING  ---------------------------------------------
@@ -291,12 +321,15 @@ gitsy.remove(){
             repo="$GITSY_UPSYNC-$repo"
         fi
         gitsy.echo.action "Removing ${Cspe}$repo ${Cok} repositoriy"
-        gitsy.remove.infile "$repo" ".gitsy"
+        gitsy.remove.infile "$repo" "$GITSY_FILE"
+        if [ "$opt" = "-g" ] || [ "$opt" = "--git" ]; then
+            git remote rm "$repo" 2> /dev/null
+            if [ "$?" = 1 ]; then
+                gitsy.error "not a git remote. aborting" 0
+            fi
+        fi
         echo
         gitsy.list
-        if [ "$opt" = "-g" ] || [ "$opt" = "--git" ]; then
-            git remote rm "$repo"
-        fi
     else
         gitsy.error "you must specified a repository !"
     fi
@@ -308,10 +341,10 @@ gitsy.list(){
         gitsy.echo.action "listing upsync repositories : "
     fi
     for name in $(git remote -v | grep ^${GITSY_UPSYNC}[^\(]*\(push\)$ | cut -f 1); do
-        gitsy.match.infile "$name" ".gitsy"
+        gitsy.match.infile "$name" "$GITSY_FILE"
         active="${Cbra}disabled"
         state=0
-        if gitsy.match.infile "$name" ".gitsy"; then
+        if gitsy.match.infile "$name" "$GITSY_FILE"; then
             state=1
             active="${Copt}active"
         fi
@@ -332,18 +365,18 @@ gitsy.add(){
                 repo="$GITSY_UPSYNC-$repo"
             fi
 
-            if ! gitsy.match.infile "$repo" ".gitsy"; then
+            if ! gitsy.match.infile "$repo" "$GITSY_FILE"; then
                 gitsy.echo.action "adding ${Cspe}$repo ${Cok}repository"
-                echo -e "$repo" >> ".gitsy"
+                echo -e "$repo" >> "$GITSY_FILE"
             else
                 gitsy.echo.action "enabling ${Cspe}$repo ${Cok}repository"
             fi
-            #~ gitsy.remove.infile "$repo" ".gitsy"
+            #~ gitsy.remove.infile "$repo" "$GITSY_FILE"
             if gitsy.match.remote "$repo"; then
                 gitsy.echo "    git remote already exists"
             else
                 if [ -z "$url" ]; then
-                    gitsy.remove.infile "$repo" ".gitsy"
+                    gitsy.remove.infile "$repo" "$GITSY_FILE"
                     gitsy.error "you must specified a remote url !"
                 else
                     gitsy.echo.action "git adding remote ${Cspe}$repo ${Cbra}$url"
@@ -387,10 +420,11 @@ gitsy.install.version(){
 gitsy.check.command(){
     case "$GITSY_COMMAND" in
         '$GITSY_ALIAS'|'add'|'remove')
-            if [ -z "$(git branch --no-color 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/(\1)/')" ]; then
+            if [ -z "$GITSY_FILE" ]; then
                 gitsy.error "${Cval}$(pwd)${Coff} is not a git repository. 
-    you must chdir to a repository before using ${Cval}$GITSY_COMMAND" 1
+        you must chdir to a repository before using ${Cval}$GITSY_COMMAND" 0
             fi
+            ;;
     esac
 }
 gitsy.uninstall(){
@@ -490,6 +524,8 @@ gitsy.usage(){
 "
 }
 gitsy.main(){
+    gitsy.check.gitdir
+    #~ echo "GITSY_FILE : $GITSY_FILE"
     if [ "$GITSY_COMMAND" = "-v" ]; then
         echo $GITSY_VERSION
         exit
