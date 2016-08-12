@@ -4,7 +4,7 @@
 # @license  GNU GPL v3 
 # @date     2016-08-06 01:50:09 
 
-   GITSY_VERSION=0.6;                GITSY_COMMAND=${1:-''}; shift
+   GITSY_VERSION=0.7;                GITSY_COMMAND=${1:-''}; shift
     GITSY_PARAMS="$@";                    GITSY_WK="$(pwd)"
     GITSY_ORIGIN="origin";            GITSY_UPSYNC="upsync"
      GITSY_ALIAS="spush";            GITSY_NOCOLOR=0
@@ -230,8 +230,8 @@ gitsy.remove.infile(){
     local data=''
     if [ -f "$GITSY_FILE" ]; then
         while read repo; do
-            if [ ! "$1" = "$repo" ]; then
-                data="$repo\n"
+            if [ ! "$1" = "$repo" ] && [ ! -z "$1" ]; then
+                data="$data$repo\n"
             fi
         done < "$GITSY_FILE"
         echo -e "$data" > "$2"
