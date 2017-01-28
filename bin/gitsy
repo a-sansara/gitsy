@@ -56,9 +56,9 @@ gitsy.echo.keyval(){
 }
 gitsy.echo.state(){
     if [ "$1" = 0 ]; then
-        echo "     done !"
+        echo "      done !"
     else 
-        echo "     fail !"
+        echo "      fail !"
     fi
 }
 gitsy.echo.error(){
