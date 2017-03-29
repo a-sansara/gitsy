@@ -1,15 +1,15 @@
 #!/bin/bash
 # @author   a-Sansara - https://git.pluie.org/pluie/gitsy
 # @app      gitsy
-# @license  GNU GPL v3 
-# @date     2016-08-06 01:50:09 
+# @license  GNU GPL v3
+# @date     2016-08-06 01:50:09
 
-   GITSY_VERSION=0.7;                GITSY_COMMAND=${1:-''}; shift
+   GITSY_VERSION=0.8;                GITSY_COMMAND=${1:-''}; shift
     GITSY_PARAMS="$@";                    GITSY_WK="$(pwd)"
     GITSY_ORIGIN="origin";            GITSY_UPSYNC="upsync"
      GITSY_ALIAS="spush";            GITSY_NOCOLOR=0
  GITSY_PULLFIRST=0;                    GITSY_QUIET=0
-    GITSY_SCRIPT=$0;              GITSY_TERM_WIDTH=105
+    GITSY_SCRIPT=$0;              GITSY_TERM_WIDTH=95
 
 # -- DISPLAY -----------------------------------------------------
 
@@ -57,7 +57,7 @@ gitsy.echo.keyval(){
 gitsy.echo.state(){
     if [ "$1" = 0 ]; then
         echo "      done !"
-    else 
+    else
         echo "      fail !"
     fi
 }
@@ -118,7 +118,7 @@ _gitsy_list(){
         done
     fi
 }
-_gitsy() 
+_gitsy()
 {
     local cur prev opts base
     _GITSY_FILE=''
@@ -178,7 +178,7 @@ _gitsy()
             ;;
     esac
 
-   COMPREPLY=(\$(compgen -W "\${opts}" -- \${cur}))  
+   COMPREPLY=(\$(compgen -W "\${opts}" -- \${cur}))
    return 0
 }
 complete -F _gitsy gitsy
@@ -309,9 +309,9 @@ gitsy.spush(){
             rs=$?
             echo -e "$result" | sed "s/^/      /"
             gitsy.echo.state "$rs"
-            echo 
+            echo
         done
-    else 
+    else
         gitsy.echo.state 1
     fi
 }
@@ -421,7 +421,7 @@ gitsy.check.command(){
         '$GITSY_ALIAS'|'add'|'remove')
             echo
             if [ -z "$GITSY_FILE" ]; then
-                gitsy.error "${Cval}$(pwd)${Coff} is not a git repository. 
+                gitsy.error "${Cval}$(pwd)${Coff} is not a git repository.
         you must chdir to a repository before using ${Cval}$GITSY_COMMAND" 0
             fi
             ;;
@@ -467,6 +467,7 @@ gitsy.install(){
 GITSY_INSTALLED=true
 gitsy.main
 " > "$dir/gitsy"
+                    chmod +x "$dir/gitsy"
                     gitsy.echo.action "installing autocompletion"
                     gitsy.set.completion
                     gitsy.on.install "$force" "$(logname)"
@@ -491,7 +492,6 @@ gitsy.on.install(){
             gitsy.echo.action "rewriting git alias ${Cspe}$GITSY_ALIAS"
             su -c "git config --global --unset alias.$GITSY_ALIAS" $2
             su -c "git config --global alias.$GITSY_ALIAS '!bash gitsy $GITSY_ALIAS'" $2
-            
         else
             gitsy.error "git alias.$GITSY_ALIAS exists in ~/.gitconfig but has a wrong definition. remove it or rename it" 0
         fi
